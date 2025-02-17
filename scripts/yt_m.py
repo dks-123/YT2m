@@ -42,7 +42,7 @@ def grab(youtube_url):
             return m3u8_url
     except subprocess.CalledProcessError as e:
         print(f"⚠️ yt-dlp 解析失敗，錯誤訊息: {e.stderr}")
-    return "https://raw.githubusercontent.com/shinch58/YT2m/main/assets/no_s.m3u8"  # 預設無訊號M3U8
+    return "https://raw.githubusercontent.com/dks-123/YT2m/main/assets/no_s.m3u8"  # 預設無訊號M3U8
 
 def process_yt_info():
     """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""

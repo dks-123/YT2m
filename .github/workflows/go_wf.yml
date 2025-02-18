@@ -25,7 +25,7 @@ jobs:
       # Install dependencies
       - name: Install dependencies
         run: |
-          pip install -U requests yt-dlp paramiko
+          pip install -U yt-dlp paramiko
 
       # Decode YT_COOKIE_B64 and generate cookies.txt
       - name: Output YT_COOKIE_B64 to cookie01.txt

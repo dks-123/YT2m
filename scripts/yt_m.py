@@ -32,21 +32,38 @@ os.makedirs(output_dir, exist_ok=True)
 
 
 def grab(youtube_url):
-    """透過 HTML 解析 YouTube 頁面中的 M3U8 連結"""
+    """優先從 HTML 解析 M3U8，若失敗則使用 yt-dlp"""
+    m3u8_url = parse_html_m3u8(youtube_url)
+    if m3u8_url:
+        return m3u8_url  # 如果 HTML 解析成功，直接使用該 URL
+
+    print("⚠️ HTML 解析失敗，嘗試 yt-dlp 解析...")
+    return parse_yt_dlp_m3u8(youtube_url)
+
+def parse_html_m3u8(youtube_url):
+    """從 HTML 原始碼解析 M3U8"""
+    import requests, re
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
         response = requests.get(youtube_url, headers=headers, timeout=5)
         response.raise_for_status()
+        m3u8_matches = re.findall(r'(https://[^"]+\.m3u8)', response.text)
+        return m3u8_matches[0] if m3u8_matches else None
+    except requests.RequestException:
+        return None
 
-        # 使用正則表達式搜尋 .m3u8 連結
-        m3u8_matches = re.findall(r'(https://[^"]+\.m3u)', response.text)
-        if m3u8_matches:
-            return m3u8_matches[0]
-    except requests.RequestException as e:
-        print(f"⚠️ HTML 解析失敗，錯誤訊息: {e}")
-
+def parse_yt_dlp_m3u8(youtube_url):
+    """使用 yt-dlp 解析 M3U8"""
+    import subprocess
+    yt_dlp_cmd = f"yt-dlp -f 'bestaudio[protocol*=m3u8]' --geo-bypass --cookies cookies.txt -g {youtube_url}"
+    try:
+        result = subprocess.run(yt_dlp_cmd, shell=True, capture_output=True, text=True, check=True)
+        return result.stdout.strip() if result.stdout.strip().startswith("http") else None
+    except subprocess.CalledProcessError:
+        return None
+        
     # 預設無訊號 M3U8
     return "https://raw.githubusercontent.com/dks-123/YT2m/main/assets/no_s.m3u8"
 

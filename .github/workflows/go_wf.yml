@@ -54,19 +54,15 @@ jobs:
           rm -f cookies.txt
           echo "✅ cookies.txt 已刪除"
 
-      # Commit and push changes
+      # Commit and push changes to GitHub
       - name: Commit and push changes
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
 
-          # 檢查 output 目錄是否有變更
+          # Check for changes in the output directory
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."
-
-            # 先拉取遠端最新變更，避免 push 被拒絕
-            git pull --rebase origin main || git reset --hard origin/main
-
             git add output/
             git commit -m "🔄 更新 M3U8 文件 $(date '+%Y-%m-%d %H:%M:%S')"
             git push origin main

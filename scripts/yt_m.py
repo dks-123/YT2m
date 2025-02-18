@@ -3,6 +3,8 @@ import subprocess
 import paramiko
 from urllib.parse import urlparse
 import base64
+import requests
+import re
 
 # 設定檔案路徑
 yt_info_path = "yt_info.txt"
@@ -28,17 +30,25 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"  # 取得路徑部
 # 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
+
 def grab(youtube_url):
-    """使用 yt-dlp 解析 M3U8 連結"""
-    yt_dlp_cmd = f"yt-dlp --geo-bypass --cookies cookies.txt --sleep-requests 1 --limit-rate 500k --retries 5 --fragment-retries 10 --no-warnings --quiet --no-check-certificate --no-playlist -g {youtube_url}"
+    """透過 HTML 解析 YouTube 頁面中的 M3U8 連結"""
     try:
-        result = subprocess.run(yt_dlp_cmd, shell=True, capture_output=True, text=True, check=True)
-        m3u8_url = result.stdout.strip()
-        if m3u8_url.startswith("http"):
-            return m3u8_url
-    except subprocess.CalledProcessError as e:
-        print(f"⚠️ yt-dlp 解析失敗，錯誤訊息: {e.stderr}")
-    return "https://raw.githubusercontent.com/dks-123/YT2m/main/assets/no_s.m3u8"  # 預設無訊號M3U8
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(youtube_url, headers=headers, timeout=5)
+        response.raise_for_status()
+
+        # 使用正則表達式搜尋 .m3u8 連結
+        m3u8_matches = re.findall(r'(https://[^"]+\.m3u)', response.text)
+        if m3u8_matches:
+            return m3u8_matches[0]
+    except requests.RequestException as e:
+        print(f"⚠️ HTML 解析失敗，錯誤訊息: {e}")
+
+    # 預設無訊號 M3U8
+    return "https://raw.githubusercontent.com/dks-123/YT2m/main/assets/no_s.m3u8"
 
 def process_yt_info():
     """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""
@@ -59,7 +69,7 @@ def process_yt_info():
             m3u8_url = grab(youtube_url)
 
             # 生成 M3U8 文件
-            m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}\n"
+            m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}8\n"
             output_m3u8 = os.path.join(output_dir, f"y{i:02d}.m3u8")
             with open(output_m3u8, "w", encoding="utf-8") as f:
                 f.write(m3u8_content)

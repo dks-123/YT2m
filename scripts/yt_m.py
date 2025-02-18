@@ -111,6 +111,5 @@ def upload_files():
         print(f"❌ SFTP 上傳失敗: {e}")
 
 if __name__ == "__main__":
-    decode_and_save_cookies()  # 解碼並保存 cookies.txt
     process_yt_info()
     upload_files()

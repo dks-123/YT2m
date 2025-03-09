@@ -30,7 +30,7 @@ os.makedirs(output_dir, exist_ok=True)
 
 def grab(youtube_url):
     """使用 yt-dlp 解析 M3U8 連結"""
-    yt_dlp_cmd = f"yt-dlp --geo-bypass --cookies cookies.txt --sleep-requests 1 --limit-rate 500k --retries 5 --fragment-retries 10 --no-warnings --quiet --no-check-certificate --no-playlist -f 'best[height=720]' -g {youtube_url}"
+    yt_dlp_cmd = f"yt-dlp --geo-bypass --cookies cookies.txt --sleep-requests 1 --limit-rate 3M --retries 5 --fragment-retries 10 --no-warnings --quiet --no-check-certificate --no-playlist -f 'best[height=720]' -g {youtube_url}"
     try:
         result = subprocess.run(yt_dlp_cmd, shell=True, capture_output=True, text=True, check=True)
         m3u8_url = result.stdout.strip()

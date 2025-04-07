@@ -2,7 +2,7 @@ name: Auto Update File to GitHub
 
 on:
   schedule:
-    - cron: "0 0,1,4,7,10,13,17,20,23 * * *"
+    - cron: "10 0,1,4,7,10,13,17,20,23 * * *"
   workflow_dispatch:  # 手動觸發
 
 jobs:

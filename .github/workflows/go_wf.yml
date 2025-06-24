@@ -27,14 +27,14 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: '3.9'
+          python-version: 3.9
 
       - name: Install dependencies
         run: |
-          pip install -U yt-dlp paramiko
+          pip install -U requests paramiko
 
       - name: Output YT_COOKIE_B64 to cookie01.txt
-        run: echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode > cookie01.txt
+        run: echo "${{ secrets.YT_COOKIE_B64 }}" | base64 --decode > cookie01.txt 
 
       - name: Decode and generate cookies.txt
         run: |
@@ -59,6 +59,7 @@ jobs:
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "github-actions@github.com"
+
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."
             git add output/
@@ -67,4 +68,4 @@ jobs:
             echo "✅ 變更已提交至 GitHub"
           else
             echo "ℹ️ output 目錄沒有變更，不進行提交"
-          fi
+            fi

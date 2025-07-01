@@ -3,7 +3,7 @@ import re
 import requests
 import subprocess
 import paramiko
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 
 # 設定檔案路徑
 yt_info_path = "yt_info.txt"
@@ -16,6 +16,7 @@ if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
     exit(1)
 
+# 解析 SFTP URL
 parsed_url = urlparse(SF_L)
 SFTP_HOST = parsed_url.hostname
 SFTP_PORT = parsed_url.port if parsed_url.port else 22
@@ -23,27 +24,11 @@ SFTP_USER = parsed_url.username
 SFTP_PASSWORD = parsed_url.password
 SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 
+# 確保輸出目錄存在
 os.makedirs(output_dir, exist_ok=True)
 
-def extract_720p_variant(master_url):
-    try:
-        content = requests.get(master_url, timeout=10).text
-        variants = re.findall(r'#EXT-X-STREAM-INF:.*RESOLUTION=(\d+)x(\d+).*?\n(.*)', content)
-        filtered = [(int(w), int(h), url) for w, h, url in variants if int(h) <= 720]
-        if not filtered:
-            print("⚠️ 無 720p 以下的 variant，使用原始 m3u8")
-            return master_url
-        best = max(filtered, key=lambda x: x[1])
-        best_url = best[2].strip()
-        if not best_url.startswith("http"):
-            best_url = urljoin(master_url, best_url)
-        print(f"🎯 選擇 720p variant：{best_url}")
-        return best_url
-    except Exception as e:
-        print(f"⚠️ 解析 variant 失敗: {e}")
-        return master_url
-
 def grab(youtube_url):
+    """從 HTML 或 yt-dlp 取得 M3U8 連結"""
     headers = {"User-Agent": "Mozilla/5.0"}
     cookies = {}
 
@@ -61,18 +46,21 @@ def grab(youtube_url):
     try:
         res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
+
         m3u8_matches = re.findall(r'https://[^\s"\']+\.m3u8', html)
         for url in m3u8_matches:
             if "googlevideo.com" in url:
                 print("✅ 成功從 HTML 取得 m3u8")
-                return extract_720p_variant(url)
+                return url
+
     except Exception as e:
         print(f"⚠️ 抓取頁面失敗: {e}")
 
-    print(f"⚙️ 執行 yt-dlp: yt-dlp -f 'best[height<=720]' --cookies {cookies_path} -g {youtube_url}")
+    # 使用 yt-dlp 備援
+    print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
     try:
         result = subprocess.run([
-            "yt-dlp", "-f", "best[height<=720]", "--cookies", cookies_path, "-g", youtube_url
+            "yt-dlp", "-f", "b", "--cookies", cookies_path, "-g", youtube_url
         ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
 
         if result.returncode == 0 and result.stdout.strip():
@@ -82,12 +70,14 @@ def grab(youtube_url):
         else:
             print("⚠️ yt-dlp 無回傳有效 URL")
             print(result.stderr)
+
     except Exception as e:
         print(f"❌ yt-dlp 執行失敗: {e}")
 
     return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
 def process_yt_info():
+    """解析 yt_info.txt 並生成 M3U8 和 PHP 檔案"""
     with open(yt_info_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -118,6 +108,7 @@ def process_yt_info():
             i += 1
 
 def upload_files():
+    """使用 SFTP 上傳 M3U8 檔案"""
     print("🚀 啟動 SFTP 上傳程序...")
     try:
         transport = paramiko.Transport((SFTP_HOST, SFTP_PORT))

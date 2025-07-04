@@ -1,3 +1,3 @@
 <?php
-header('Location: https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8');
+header('Location: https://manifest.googlevideo.com/api/manifest/hls_variant/expire/1751642206/ei/_ZtnaLzFPOu1kucP-uPSsAg/ip/20.169.160.65/id/-DpI0NLEz04.1/source/yt_live_broadcast/requiressl/yes/xpc/EgVo2aDSNQ%3D%3D/tx/51477232/txs/51477230%2C51477231%2C51477232/hfr/1/maxh/4320/maudio/1/siu/1/bui/AY1jyLOyZHyb0wT6kqqqRWV3NvxLmXhFgix1Dd2J2UuXPgWPLsnQ4S8F1sPmvhha7_I0edmQqA/spc/l3OVKZt1-AIcDcrXI8Q_Cn3QgSFGdkrzAiscJNzqswJLgU6h0b7qr9Dr-iLPDqmxuqazfL3vOq6zG41RPwY/vprv/1/go/1/rqh/5/pacing/0/nvgoi/1/ncsapi/1/keepalive/yes/fexp/51355912/dover/11/itag/0/playlist_type/LIVE/sparams/expire%2Cei%2Cip%2Cid%2Csource%2Crequiressl%2Cxpc%2Ctx%2Ctxs%2Chfr%2Cmaxh%2Cmaudio%2Csiu%2Cbui%2Cspc%2Cvprv%2Cgo%2Crqh%2Citag%2Cplaylist_type/sig/AJfQdSswRQIhANZmBum7u6IW68VjA_5-HhdtlOy5lIz_k3Z8K4BHSd28AiAS9vMJVQv4dtLudZCN65CbW_0RJXQL-5818EcS5DSuLA%3D%3D/file/index.m3u8');
 ?>

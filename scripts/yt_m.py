@@ -3,16 +3,6 @@ import re
 import requests
 import paramiko
 from urllib.parse import urlparse
-import urllib3
-import socket
-
-# 設置 urllib3 的 socket 選項
-urllib3.util.connection.HTTPConnection.default_socket_options = (
-    urllib3.util.connection.HTTPConnection.default_socket_options + [
-        (socket.SOL_SOCKET, socket.SO_SNDTIMEO, (int(10), 0)),
-        (socket.SOL_SOCKET, socket.SO_RCVTIMEO, (int(10), 0)),
-    ]
-)
 
 yt_info_path = "yt_info.txt"
 output_dir = "output"
@@ -83,7 +73,7 @@ def grab(youtube_url):
         resolved_url = resolve_to_watch_url(youtube_url)
         print(f"🔁 轉址後 URL: {resolved_url}")
 
-        res = session.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
+        res = session.get(resolved_url, headers=headers, cookies=cookies, timeout=15)  # 增加超時時間
         html = res.text
 
         if 'noindex' in html:

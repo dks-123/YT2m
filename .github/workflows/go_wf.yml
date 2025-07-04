@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SF_L: ${{ secrets.SF_L }}
+      YT_API_KEY: ${{ secrets.YT_API_KEY }}
 
     steps:
       - name: 📥 Checkout repository
@@ -30,7 +31,7 @@ jobs:
           python-version: 3.9
 
       - name: 📦 Install dependencies
-        run: pip install -U requests paramiko
+        run: pip install -U httpx paramiko
 
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
@@ -60,7 +61,7 @@ jobs:
       - name: 💾 Commit and push changes
         run: |
           git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
+          git config --global user.email "internal@users.noreply.github.com"
 
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."

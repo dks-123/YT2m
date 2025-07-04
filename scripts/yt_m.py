@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 import urllib3
 import socket
 
-# 設置 urllib3 標頭限制
+# 設置 urllib3 的 socket 選項
 urllib3.util.connection.HTTPConnection.default_socket_options = (
     urllib3.util.connection.HTTPConnection.default_socket_options + [
         (socket.SOL_SOCKET, socket.SO_SNDTIMEO, (int(10), 0)),
@@ -52,7 +52,7 @@ def resolve_to_watch_url(youtube_url):
         if match:
             return match.group(1)
         else:
-            print("⚠️ 無法從 HTML 中提取 watch?v=xxx URL")
+            print(f"⚠️ 無法從 HTML 中提取 watch?v=xxx URL: {youtube_url}")
     except Exception as e:
         print(f"⚠️ 無法取得最終直播網址: {e}")
     return youtube_url
@@ -118,7 +118,7 @@ def process_yt_info():
             print(f"🔍 嘗試解析 M3U8: {youtube_url}")
             m3u8_url = grab(youtube_url)
             if m3u8_url is None:
-                continue  # 跳過無效直播
+                continue
 
             m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}\n"
             output_m3u8 = os.path.join(output_dir, f"y{i:02d}.m3u8")

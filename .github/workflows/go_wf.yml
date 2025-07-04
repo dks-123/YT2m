@@ -32,6 +32,13 @@ jobs:
       - name: 📦 Install dependencies
         run: pip install -U requests paramiko
 
+      - name: 🔐 Combine Base64 cookie segments into cookies.b64
+        run: |
+          echo "${{ secrets.YT_COOKIE_B64_P1 }}" > cookies.b64
+          echo "${{ secrets.YT_COOKIE_B64_P2 }}" >> cookies.b64
+          echo "${{ secrets.YT_COOKIE_B64_P3 }}" >> cookies.b64
+          echo "✅ cookies.b64 組合完成"
+
       - name: 🔐 Decode YT_COOKIE_B64 to cookies.txt
         run: |
           if [ -z "${{ secrets.YT_COOKIE_B64 }}" ]; then

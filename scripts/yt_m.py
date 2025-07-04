@@ -39,7 +39,7 @@ def get_channel_id(youtube_url):
                 if data.get("items"):
                     print(f"✅ API 找到頻道 ID: {data['items'][0]['id']}")
                     return data["items"][0]["id"]
-                print(fmv"⚠️ API 無法找到 {handle} 的頻道 ID，嘗試 HTML 解析")
+                print(f"⚠️ API 無法找到 {handle} 的頻道 ID，嘗試 HTML 解析")
         except Exception as e:
             print(f"⚠️ API 獲取頻道 ID 失敗: {e}")
 

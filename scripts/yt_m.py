@@ -3,6 +3,16 @@ import re
 import requests
 import paramiko
 from urllib.parse import urlparse
+import urllib3
+import socket
+
+# 設置 urllib3 標頭限制
+urllib3.util.connection.HTTPConnection.default_socket_options = (
+    urllib3.util.connection.HTTPConnection.default_socket_options + [
+        (socket.SOL_SOCKET, socket.SO_SNDTIMEO, (int(10), 0)),
+        (socket.SOL_SOCKET, socket.SO_RCVTIMEO, (int(10), 0)),
+    ]
+)
 
 yt_info_path = "yt_info.txt"
 output_dir = "output"
@@ -26,11 +36,19 @@ os.makedirs(output_dir, exist_ok=True)
 def resolve_to_watch_url(youtube_url):
     """解析 @channel/live → 實際 watch?v=xxx 頁面"""
     try:
-        headers = {"User-Agent": "Mozilla/5.0"}
-        res = requests.get(youtube_url, headers=headers, timeout=10)
+        session = requests.Session()
+        session.max_redirects = 30
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive"
+        }
+        res = session.get(youtube_url, headers=headers, timeout=10)
         html = res.text
 
-        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
+        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html) or \
+                re.search(r'"canonicalUrl":"(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
         if match:
             return match.group(1)
         else:
@@ -40,11 +58,15 @@ def resolve_to_watch_url(youtube_url):
     return youtube_url
 
 def grab(youtube_url):
+    session = requests.Session()
+    session.max_redirects = 30
     headers = {
-        "User-Agent": "Mozilla/5.0"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive"
     }
 
-    # 嘗試讀取 cookies.txt
     cookies = {}
     if os.path.exists(cookies_path):
         try:
@@ -61,11 +83,12 @@ def grab(youtube_url):
         resolved_url = resolve_to_watch_url(youtube_url)
         print(f"🔁 轉址後 URL: {resolved_url}")
 
-        res = requests.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
+        res = session.get(resolved_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
 
         if 'noindex' in html:
-            print("⚠️ 頻道目前未開啟直播")
+            print(f"⚠️ 頻道 {youtube_url} 目前未開啟直播")
+            return None
 
         m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
         for url in m3u8_matches:
@@ -94,6 +117,8 @@ def process_yt_info():
             youtube_url = line
             print(f"🔍 嘗試解析 M3U8: {youtube_url}")
             m3u8_url = grab(youtube_url)
+            if m3u8_url is None:
+                continue  # 跳過無效直播
 
             m3u8_content = f"#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1280000\n{m3u8_url}\n"
             output_m3u8 = os.path.join(output_dir, f"y{i:02d}.m3u8")

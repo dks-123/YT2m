@@ -2,6 +2,7 @@ import os
 import re
 import httpx
 import paramiko
+import json
 from urllib.parse import urlparse
 
 yt_info_path = "yt_info.txt"
@@ -36,8 +37,9 @@ def get_channel_id(youtube_url):
                 res.raise_for_status()
                 data = res.json()
                 if data.get("items"):
+                    print(f"✅ API 找到頻道 ID: {data['items'][0]['id']}")
                     return data["items"][0]["id"]
-                print(f"⚠️ API 無法找到 {handle} 的頻道 ID，嘗試 HTML 解析")
+                print(fmv"⚠️ API 無法找到 {handle} 的頻道 ID，嘗試 HTML 解析")
         except Exception as e:
             print(f"⚠️ API 獲取頻道 ID 失敗: {e}")
 
@@ -60,6 +62,7 @@ def get_channel_id(youtube_url):
             for pattern in patterns:
                 match = re.search(pattern, html)
                 if match:
+                    print(f"✅ HTML 找到頻道 ID: {match.group(1)}")
                     return match.group(1)
             print(f"⚠️ 無法從 {youtube_url} 提取頻道 ID")
             return None
@@ -77,8 +80,9 @@ def get_live_video_id(channel_id):
             data = res.json()
             if data.get("items"):
                 video_id = data["items"][0]["id"]["videoId"]
+                print(f"✅ 找到直播 videoId: {video_id}")
                 return f"https://www.youtube.com/watch?v={video_id}"
-            print(f"⚠️ 頻道 {channel_id} 目前無直播")
+            print(f"⚠️ 頻道 {channel_id} 目前無直播 (API 返回空結果)")
             return None
     except Exception as e:
         print(f"⚠️ API 請求失敗: {e}")
@@ -114,9 +118,21 @@ def grab(youtube_url):
                 print(f"⚠️ 頻道 {youtube_url} 目前未開啟直播")
                 return None
 
-            m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
+            # 嘗試從 player_response JSON 中提取 m3u8
+            player_response_match = re.search(r'ytInitialPlayerResponse\s*=\s*({.*?});', html, re.DOTALL)
+            if player_response_match:
+                player_response = json.loads(player_response_match.group(1))
+                streaming_data = player_response.get("streamingData", {})
+                hls_formats = streaming_data.get("hlsManifestUrl", "")
+                if hls_formats:
+                    print(f"✅ 找到 .m3u8 連結: {hls_formats}")
+                    return hls_formats
+
+            # 備用正則表達式
+            m3u8_matches = re.findall(r'(https://[^"]+\.m3u8[^"]*)', html)
             for url in m3u8_matches:
-                if "googlevideo.com" in url and "mime=video" in url:
+                if "googlevideo.com" in url:
+                    print(f"✅ 找到 .m3u8 連結: {url}")
                     return url
 
             print("⚠️ 未找到有效的 .m3u8 連結")

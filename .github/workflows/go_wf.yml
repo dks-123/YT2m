@@ -12,7 +12,7 @@ on:
     - cron: "0 13 * * *"   # 台灣時間 21:00
     - cron: "0 17 * * *"   # 台灣時間 01:00
     - cron: "0 20 * * *"   # 台灣時間 04:00
-  workflow_dispatch:  # 可手動觸發
+  workflow_dispatch:
 
 jobs:
   update_m3u8:
@@ -30,7 +30,7 @@ jobs:
           python-version: 3.9
 
       - name: 📦 Install dependencies
-        run: pip install -U requests paramiko
+        run: pip install -U requests paramiko urllib3
 
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
@@ -47,7 +47,10 @@ jobs:
       - name: 🔍 Run yt_m.py to parse M3U8
         run: |
           echo "🚀 執行 scripts/yt_m.py"
-          python3 scripts/yt_m.py
+          for i in {1..3}; do
+            python3 scripts/yt_m.py && break || echo "⚠️ 第 $i 次嘗試失敗，重試..."
+            sleep 5
+          done
 
       - name: 🧹 Clean up cookies.txt
         run: |

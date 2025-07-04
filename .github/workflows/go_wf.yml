@@ -31,7 +31,7 @@ jobs:
           python-version: 3.9
 
       - name: 📦 Install dependencies
-        run: pip install -U httpx paramiko
+        run: pip install -U httpx[http2] paramiko
 
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |

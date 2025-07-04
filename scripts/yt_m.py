@@ -1,12 +1,17 @@
 import os
 import re
-import requests
+import httpx
 import paramiko
 from urllib.parse import urlparse
 
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
+# 從 GitHub Secrets 環境變數讀取 API 金鑰
+API_KEY = os.getenv("YT_API_KEY", "")
+if not API_KEY:
+    print("❌ 環境變數 YT_API_KEY 未設置")
+    exit(1)
 
 # 從 GitHub Secrets 環境變數讀取 SFTP 資訊
 SF_L = os.getenv("SF_L", "")
@@ -23,73 +28,84 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 
 os.makedirs(output_dir, exist_ok=True)
 
-def resolve_to_watch_url(youtube_url):
-    """解析 @channel/live → 實際 watch?v=xxx 頁面"""
+def get_channel_id(youtube_url):
+    """從 YouTube URL 提取頻道 ID"""
     try:
-        session = requests.Session()
-        session.max_redirects = 30
+        with httpx.Client(http2=True, follow_redirects=True, timeout=15) as client:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Connection": "keep-alive"
+            }
+            res = client.get(youtube_url, headers=headers)
+            html = res.text
+            match = re.search(r'"channelId":"(UC[^"]+)"', html)
+            if match:
+                return match.group(1)
+            print(f"⚠️ 無法從 {youtube_url} 提取頻道 ID")
+            return None
+    except Exception as e:
+        print(f"⚠️ 提取頻道 ID 失敗: {e}")
+        return None
+
+def get_live_video_id(channel_id):
+    """使用 YouTube Data API 獲取直播 videoId"""
+    try:
+ Vigo       url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&eventType=live&type=video&key={API_KEY}"
+        with httpx.Client(timeout=15) as client:
+            res = client.get(url)
+            res.raise_for_status()
+            data = res.json()
+            if data.get("items"):
+                video_id = data["items"][0]["id"]["videoId"]
+                return f"https://www.youtube.com/watch?v={video_id}"
+            print(f"⚠️ 頻道 {channel_id} 目前無直播")
+            return None
+    except Exception as e:
+        print(f"⚠️ API 請求失敗: {e}")
+        return None
+
+def grab(youtube_url):
+    """抓取 m3u8  Ascend直播流"""
+    with httpx.Client(http2=True, follow_redirects=True, timeout=15) as client:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.5",
             "Connection": "keep-alive"
         }
-        res = session.get(youtube_url, headers=headers, timeout=10)
-        html = res.text
 
-        match = re.search(r'<link rel="canonical" href="(https://www\.youtube\.com/watch\?v=[^"]+)"', html) or \
-                re.search(r'"canonicalUrl":"(https://www\.youtube\.com/watch\?v=[^"]+)"', html)
-        if match:
-            return match.group(1)
-        else:
-            print(f"⚠️ 無法從 HTML 中提取 watch?v=xxx URL: {youtube_url}")
-    except Exception as e:
-        print(f"⚠️ 無法取得最終直播網址: {e}")
-    return youtube_url
+        cookies = {}
+        if os.path.exists(cookies_path):
+            try:
+                with open(cookies_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if not line.startswith('#') and '\t' in line:
+                            parts = line.strip().split('\t')
+                            if len(parts) >= 6:
+                                cookies[parts[5]] = parts[6]
+            except Exception as e:
+                print(f"⚠️ Cookie 讀取失敗: {e}")
 
-def grab(youtube_url):
-    session = requests.Session()
-    session.max_redirects = 30
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Connection": "keep-alive"
-    }
-
-    cookies = {}
-    if os.path.exists(cookies_path):
         try:
-            with open(cookies_path, "r", encoding="utf-8") as f:
-                for line in f:
-                    if not line.startswith('#') and '\t' in line:
-                        parts = line.strip().split('\t')
-                        if len(parts) >= 6:
-                            cookies[parts[5]] = parts[6]
+            res = client.get(youtube_url, headers=headers, cookies=cookies)
+            html = res.text
+
+            if 'noindex' in html:
+                print(f"⚠️ 頻道 {youtube_url} 目前未開啟直播")
+                return None
+
+            m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
+            for url in m3u8_matches:
+                if "googlevideo.com" in url and "mime=video" in url:
+                    return url
+
+            print("⚠️ 未找到有效的 .m3u8 連結")
         except Exception as e:
-            print(f"⚠️ Cookie 讀取失敗: {e}")
+            print(f"⚠️ 抓取頁面失敗: {e}")
 
-    try:
-        resolved_url = resolve_to_watch_url(youtube_url)
-        print(f"🔁 轉址後 URL: {resolved_url}")
-
-        res = session.get(resolved_url, headers=headers, cookies=cookies, timeout=15)  # 增加超時時間
-        html = res.text
-
-        if 'noindex' in html:
-            print(f"⚠️ 頻道 {youtube_url} 目前未開啟直播")
-            return None
-
-        m3u8_matches = re.findall(r'https://[^"]+\.m3u8[^"]*', html)
-        for url in m3u8_matches:
-            if "googlevideo.com" in url and "mime=video" in url:
-                return url
-
-        print("⚠️ 未找到有效的 .m3u8 連結")
-    except Exception as e:
-        print(f"⚠️ 抓取頁面失敗: {e}")
-
-    return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
+        return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
 def process_yt_info():
     with open(yt_info_path, "r", encoding="utf-8") as f:
@@ -106,7 +122,21 @@ def process_yt_info():
         else:
             youtube_url = line
             print(f"🔍 嘗試解析 M3U8: {youtube_url}")
-            m3u8_url = grab(youtube_url)
+
+            # 提取頻道 ID
+            channel_id = get_channel_id(youtube_url)
+            if not channel_id:
+                print(f"⚠️ 跳過 {youtube_url}，無法獲取頻道 ID")
+                continue
+
+            # 使用 API 獲取直播 URL
+            live_url = get_live_video_id(channel_id)
+            if not live_url:
+                print(f"⚠️ 頻道 {youtube_url} 無直播，跳過")
+                continue
+
+            # 抓取 m3u8
+            m3u8_url = grab(live_url)
             if m3u8_url is None:
                 continue
 

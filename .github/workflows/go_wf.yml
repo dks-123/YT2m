@@ -30,7 +30,7 @@ jobs:
           python-version: 3.9
 
       - name: 📦 Install dependencies
-        run: pip install -U requests paramiko urllib3
+        run: pip install -U requests paramiko
 
       - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |

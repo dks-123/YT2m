@@ -1,5 +1,6 @@
 import os
 import re
+import json
 import requests
 import subprocess
 import paramiko
@@ -28,7 +29,7 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 os.makedirs(output_dir, exist_ok=True)
 
 def grab(youtube_url):
-    """先使用 yt-dlp 取得 M3U8，失敗再從 HTML 擷取 master.m3u8 並挑選 720p 以下畫質"""
+    """先使用 yt-dlp，失敗則從 HTML 的 ytInitialPlayerResponse 解析出 m3u8"""
     print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
     try:
         result = subprocess.run([
@@ -65,19 +66,24 @@ def grab(youtube_url):
         res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
 
-        m3u8_master_match = re.findall(r'https://[^"\']+?\.m3u8[^"\']*', html)
-        master_url = ""
-        for u in m3u8_master_match:
-            if "googlevideo.com" in u:
-                master_url = u
-                break
-
-        if not master_url:
-            print("❌ 找不到 master.m3u8")
+        # 從 ytInitialPlayerResponse 中擷取 hlsManifestUrl
+        initial_match = re.search(r'var ytInitialPlayerResponse = ({.+?});', html)
+        if not initial_match:
+            print("❌ 找不到 ytInitialPlayerResponse JSON")
             return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
-        print("✅ 成功取得 master.m3u8")
+        try:
+            player_data = json.loads(initial_match.group(1))
+            master_url = player_data.get("streamingData", {}).get("hlsManifestUrl", "")
+            if not master_url:
+                print("❌ ytInitialPlayerResponse 中沒有 hlsManifestUrl")
+                return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
+            print(f"✅ 從 ytInitialPlayerResponse 取得 master.m3u8：{master_url}")
+        except Exception as e:
+            print(f"❌ JSON 解析失敗: {e}")
+            return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
+        # 擷取 ≤720p 串流
         master_m3u8 = requests.get(master_url, headers=headers, cookies=cookies, timeout=10).text
         stream_matches = re.findall(r'#EXT-X-STREAM-INF:[^\n]+\n([^\n]+)', master_m3u8)
         resolutions = re.findall(r'RESOLUTION=\d+x(\d+)', master_m3u8)

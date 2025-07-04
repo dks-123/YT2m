@@ -28,7 +28,25 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 os.makedirs(output_dir, exist_ok=True)
 
 def grab(youtube_url):
-    """從 HTML 或 yt-dlp 取得 M3U8 連結"""
+    """先使用 yt-dlp 取得 M3U8，失敗再從 HTML 擷取 master.m3u8 並挑選 720p 以下畫質"""
+    print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
+    try:
+        result = subprocess.run([
+            "yt-dlp", "-f", "b", "--cookies", cookies_path, "-g", youtube_url
+        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+
+        if result.returncode == 0 and result.stdout.strip().startswith("http"):
+            m3u8_url = result.stdout.strip().splitlines()[0]
+            print("✅ 成功取得 m3u8（yt-dlp）")
+            return m3u8_url
+        else:
+            print("⚠️ yt-dlp 無回傳有效 URL")
+            print(result.stderr)
+    except Exception as e:
+        print(f"❌ yt-dlp 執行失敗: {e}")
+
+    print("🔁 yt-dlp 失敗，嘗試從 HTML 擷取 m3u8")
+
     headers = {"User-Agent": "Mozilla/5.0"}
     cookies = {}
 
@@ -47,32 +65,46 @@ def grab(youtube_url):
         res = requests.get(youtube_url, headers=headers, cookies=cookies, timeout=10)
         html = res.text
 
-        m3u8_matches = re.findall(r'https://[^\s"\']+\.m3u8', html)
-        for url in m3u8_matches:
-            if "googlevideo.com" in url:
-                print("✅ 成功從 HTML 取得 m3u8")
-                return url
+        m3u8_master_match = re.findall(r'https://[^"\']+?\.m3u8[^"\']*', html)
+        master_url = ""
+        for u in m3u8_master_match:
+            if "googlevideo.com" in u:
+                master_url = u
+                break
 
-    except Exception as e:
-        print(f"⚠️ 抓取頁面失敗: {e}")
+        if not master_url:
+            print("❌ 找不到 master.m3u8")
+            return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 
-    # 使用 yt-dlp 備援
-    print(f"⚙️ 執行 yt-dlp: yt-dlp -f b --cookies {cookies_path} -g {youtube_url}")
-    try:
-        result = subprocess.run([
-            "yt-dlp", "-f", "b", "--cookies", cookies_path, "-g", youtube_url
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=20)
+        print("✅ 成功取得 master.m3u8")
 
-        if result.returncode == 0 and result.stdout.strip():
-            m3u8_url = result.stdout.strip().splitlines()[0]
-            print("✅ 成功取得 m3u8（yt-dlp）")
-            return m3u8_url
+        master_m3u8 = requests.get(master_url, headers=headers, cookies=cookies, timeout=10).text
+        stream_matches = re.findall(r'#EXT-X-STREAM-INF:[^\n]+\n([^\n]+)', master_m3u8)
+        resolutions = re.findall(r'RESOLUTION=\d+x(\d+)', master_m3u8)
+
+        best_url = ""
+        best_res = 0
+        for i, res in enumerate(resolutions):
+            try:
+                height = int(res)
+                if height <= 720 and height >= best_res:
+                    best_res = height
+                    best_url = stream_matches[i]
+            except:
+                continue
+
+        if best_url and not best_url.startswith("http"):
+            best_url = os.path.join(os.path.dirname(master_url), best_url)
+
+        if best_url:
+            print(f"✅ 成功擷取 {best_res}p 串流：{best_url}")
+            return best_url
         else:
-            print("⚠️ yt-dlp 無回傳有效 URL")
-            print(result.stderr)
+            print("❌ 無法擷取合適畫質串流")
+            return master_url
 
     except Exception as e:
-        print(f"❌ yt-dlp 執行失敗: {e}")
+        print(f"❌ HTML 備援解析失敗: {e}")
 
     return "https://raw.githubusercontent.com/jz168k/YT2m/main/assets/no_s.m3u8"
 

@@ -7,13 +7,10 @@ from urllib.parse import urlparse
 yt_info_path = "yt_info.txt"
 output_dir = "output"
 cookies_path = os.path.join(os.getcwd(), "cookies.txt")
-# 從 GitHub Secrets 環境變數讀取 API 金鑰
 API_KEY = os.getenv("YT_API_KEY", "")
 if not API_KEY:
-    print("❌ 環境變數 YT_API_KEY 未設置")
-    exit(1)
+    print("❌ 環境變數 YT_API_KEY 未設置，改用 HTML 解析")
 
-# 從 GitHub Secrets 環境變數讀取 SFTP 資訊
 SF_L = os.getenv("SF_L", "")
 if not SF_L:
     print("❌ 環境變數 SF_L 未設置")
@@ -29,7 +26,22 @@ SFTP_REMOTE_DIR = parsed_url.path if parsed_url.path else "/"
 os.makedirs(output_dir, exist_ok=True)
 
 def get_channel_id(youtube_url):
-    """從 YouTube URL 提取頻道 ID"""
+    """從 YouTube URL 提取頻道 ID，優先使用 API"""
+    handle = youtube_url.split("/")[-2] if "/@" in youtube_url else None
+    if API_KEY and handle:
+        try:
+            url = f"https://www.googleapis.com/youtube/v3/channels?part=id&forHandle={handle}&key={API_KEY}"
+            with httpx.Client(timeout=15) as client:
+                res = client.get(url)
+                res.raise_for_status()
+                data = res.json()
+                if data.get("items"):
+                    return data["items"][0]["id"]
+                print(f"⚠️ API 無法找到 {handle} 的頻道 ID，嘗試 HTML 解析")
+        except Exception as e:
+            print(f"⚠️ API 獲取頻道 ID 失敗: {e}")
+
+    # 回退到 HTML 解析
     try:
         with httpx.Client(http2=True, follow_redirects=True, timeout=15) as client:
             headers = {
@@ -40,19 +52,25 @@ def get_channel_id(youtube_url):
             }
             res = client.get(youtube_url, headers=headers)
             html = res.text
-            match = re.search(r'"channelId":"(UC[^"]+)"', html)
-            if match:
-                return match.group(1)
+            patterns = [
+                r'"channelId":"(UC[^"]+)"',
+                r'<meta itemprop="channelId" content="(UC[^"]+)"',
+                r'"externalId":"(UC[^"]+)"'
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, html)
+                if match:
+                    return match.group(1)
             print(f"⚠️ 無法從 {youtube_url} 提取頻道 ID")
             return None
     except Exception as e:
-        print(f"⚠️ 提取頻道 ID 失敗: {e}")
+        print(f"⚠️ HTML 提取頻道 ID 失敗: {e}")
         return None
 
 def get_live_video_id(channel_id):
     """使用 YouTube Data API 獲取直播 videoId"""
     try:
- Vigo       url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&eventType=live&type=video&key={API_KEY}"
+        url = f"https://www.googleapis.com/youtube/v3/search?part=snippet&channelId={channel_id}&eventType=live&type=video&key={API_KEY}"
         with httpx.Client(timeout=15) as client:
             res = client.get(url)
             res.raise_for_status()
@@ -67,7 +85,7 @@ def get_live_video_id(channel_id):
         return None
 
 def grab(youtube_url):
-    """抓取 m3u8  Ascend直播流"""
+    """抓取 m3u8 直播流"""
     with httpx.Client(http2=True, follow_redirects=True, timeout=15) as client:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -130,10 +148,13 @@ def process_yt_info():
                 continue
 
             # 使用 API 獲取直播 URL
-            live_url = get_live_video_id(channel_id)
-            if not live_url:
-                print(f"⚠️ 頻道 {youtube_url} 無直播，跳過")
-                continue
+            if API_KEY:
+                live_url = get_live_video_id(channel_id)
+                if not live_url:
+                    print(f"⚠️ 頻道 {youtube_url} 無直播，跳過")
+                    continue
+            else:
+                live_url = youtube_url  # 無 API 金鑰時回退到原始 URL
 
             # 抓取 m3u8
             m3u8_url = grab(live_url)

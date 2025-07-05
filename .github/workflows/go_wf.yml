@@ -2,7 +2,11 @@ name: Auto Update File to GitHub
 
 on:
   schedule:
-    # 減少執行頻率，避免觸發 YouTube 防護機制
+    - cron: "5 0 * * *"    # 台灣時間 08:05
+    - cron: "0 1 * * *"    # 台灣時間 09:05
+    - cron: "0 5 * * *"    # 台灣時間 13:00
+    - cron: "0 9 * * *"    # 台灣時間 17:00
+    - cron: "0 13 * * *"   # 台灣時間 21:00
   workflow_dispatch:
 
 jobs:
@@ -17,107 +21,52 @@ jobs:
         uses: actions/checkout@v4
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.9'
 
       - name: 📦 Install dependencies
-        run: pip install -U httpx[http2] paramiko
-
-      - name: 🔐 Combine Base64 cookie segments into cookies.b64 (optional)
         run: |
-          if [ ! -z "${{ secrets.YT_COOKIE_B64_P1 }}" ]; then
-            echo "${{ secrets.YT_COOKIE_B64_P1 }}" > cookies.b64
-            echo "${{ secrets.YT_COOKIE_B64_P2 }}" >> cookies.b64
-            echo "${{ secrets.YT_COOKIE_B64_P3 }}" >> cookies.b64
-            echo "✅ cookies.b64 組合完成"
-          else
-            echo "ℹ️ 未設置 Cookie，將使用無 Cookie 模式"
-          fi
+          pip install -U yt-dlp httpx[http2] paramiko
+          sudo apt-get update
+          echo "✅ 已安裝 yt-dlp、httpx、paramiko "
 
-      - name: 📄 Decode cookies.b64 into cookies.txt (optional)
+      - name: 🔐 Combine Base64 cookie segments into cookies.b64
         run: |
-          if [ -f "cookies.b64" ]; then
-            base64 -d cookies.b64 > cookies.txt
-            echo "✅ cookies.txt 已生成"
-          else
-            echo "ℹ️ 跳過 cookies.txt 生成"
-          fi
+          echo "${{ secrets.YT_COOKIE_B64_P1 }}" > cookies.b64
+          echo "${{ secrets.YT_COOKIE_B64_P2 }}" >> cookies.b64
+          echo "${{ secrets.YT_COOKIE_B64_P3 }}" >> cookies.b64
+          echo "✅ cookies.b64 組合完成"
 
-      - name: 🔍 Run yt_m.py to parse M3U8 with retry mechanism
+      - name: 📄 Decode cookies.b64 into cookies.txt
+        run: |
+          base64 -d cookies.b64 > cookies.txt
+          echo "✅ cookies.txt 已生成"
+
+      - name: 🔍 Run yt_m.py to parse M3U8
         run: |
           echo "🚀 執行 scripts/yt_m.py"
-          
-          # 設定最大重試次數
-          MAX_RETRIES=3
-          RETRY_DELAY=10
-          
-          for i in $(seq 1 $MAX_RETRIES); do
-            echo "🔄 第 $i 次嘗試..."
-            
-            # 添加隨機延遲避免被偵測
-            sleep $((RANDOM % 5 + 1))
-            
-            if python3 scripts/yt_m.py; then
-              echo "✅ 第 $i 次嘗試成功！"
-              break
-            else
-              echo "⚠️ 第 $i 次嘗試失敗"
-              if [ $i -lt $MAX_RETRIES ]; then
-                echo "⏳ 等待 $RETRY_DELAY 秒後重試..."
-                sleep $RETRY_DELAY
-                # 增加重試間隔
-                RETRY_DELAY=$((RETRY_DELAY * 2))
-              else
-                echo "❌ 所有重試均失敗"
-                exit 1
-              fi
-            fi
+          for i in {1..3}; do
+            python3 scripts/yt_m.py && break || echo "⚠️ 第 $i 次嘗試失敗，重試..."
+            sleep 5
           done
 
       - name: 🧹 Clean up cookies.txt
         run: |
           rm -f cookies.txt cookies.b64
-          echo "✅ 清理完成"
-
-      - name: 📊 Generate execution report
-        run: |
-          echo "📊 執行報告" >> execution_report.txt
-          echo "時間: $(date)" >> execution_report.txt
-          echo "處理的文件數量: $(ls -1 output/ | wc -l)" >> execution_report.txt
-          echo "生成的文件:" >> execution_report.txt
-          ls -la output/ >> execution_report.txt
-          cat execution_report.txt
+          echo "✅ cookies.txt 和 cookies.b64 已刪除"
 
       - name: 💾 Commit and push changes
         run: |
           git config --global user.name "github-actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.email "internal@users.noreply.github.com"
 
-          # 檢查是否有變更
           if [[ -n "$(git status --porcelain output/)" ]]; then
             echo "📂 偵測到 output 變更，開始提交..."
             git add output/
-            
-            # 生成詳細的提交訊息
-            COMMIT_MSG="🔄 更新 M3U8 文件 $(date '+%Y-%m-%d %H:%M:%S')"
-            COMMIT_MSG="$COMMIT_MSG\n\n📊 統計資訊:"
-            COMMIT_MSG="$COMMIT_MSG\n- 處理文件數: $(ls -1 output/ | wc -l)"
-            COMMIT_MSG="$COMMIT_MSG\n- 執行時間: $(date)"
-            
-            git commit -m "$COMMIT_MSG"
+            git commit -m "🔄 更新 M3U8 文件 $(date '+%Y-%m-%d %H:%M:%S')"
             git push origin main
             echo "✅ 變更已提交至 GitHub"
           else
             echo "ℹ️ output 目錄沒有變更，不進行提交"
           fi
-
-      - name: 🚨 Notify on failure
-        if: failure()
-        run: |
-          echo "❌ 工作流程執行失敗"
-          echo "請檢查以下可能的問題："
-          echo "1. YouTube API 配額是否用盡"
-          echo "2. Cookie 是否需要更新"
-          echo "3. 網路連線是否正常"
-          echo "4. SFTP 憑證是否正確"
